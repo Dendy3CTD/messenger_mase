@@ -1,0 +1,7 @@
+tunnel: 95293fbf-ed59-4081-9840-be2e59f3bd46
+credentials-file: /home/danil/.cloudflared/95293fbf-ed59-4081-9840-be2e59f3bd46.json
+
+ingress:
+  - hostname: mase.nemilk.ru
+    service: http://127.0.0.1:8080
+  - service: http_status:404

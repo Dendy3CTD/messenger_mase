@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Mase Server
+GenericName=Mase Messenger Server
+Comment=Управление сервером Mase Messenger
+Exec=python3 /home/danil/code/mase/mase-server-gui.py
+Icon=/home/danil/code/mase/server-icon.svg
+Terminal=false
+Categories=Network;Chat;
+Keywords=mase;messenger;server;chat;
+StartupNotify=true
+StartupWMClass=mase-server-gui.py

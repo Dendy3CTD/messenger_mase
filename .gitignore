@@ -1,0 +1,44 @@
+# --- Базы данных и данные пользователей (никогда не в git) ---
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.db
+# загрузки пользователей (только рабочие каталоги, НЕ исходники пакетов media/)
+/media/
+/go-server/media/
+/go-server/deploy/media/
+
+# --- Собранные бинарники и APK ---
+/go-server/deploy/mase-server
+/dist/
+*.apk
+*.aab
+
+# --- Ключи подписи и секреты ---
+*.keystore
+*.jks
+.env
+.env.*
+local.properties
+
+# --- Сборка и кеши ---
+**/build/
+.gradle/
+.kotlin/
+.cxx/
+captures/
+__pycache__/
+*.pyc
+
+# --- IDE ---
+.idea/
+*.iml
+
+# --- Логи ---
+*.log
+
+# --- Служебные файлы ассистента и локальные заметки ---
+.claude/
+CLAUDE.md
+*.local.md

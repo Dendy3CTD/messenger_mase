@@ -1,0 +1,19 @@
+# /etc/systemd/system/mase.service
+# sudo systemctl enable mase && sudo systemctl start mase
+
+[Unit]
+Description=Mase Messenger Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/mase
+ExecStart=/opt/mase/mase-server -addr :8080 -db /opt/mase/mase.sqlite -media /opt/mase/media
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
