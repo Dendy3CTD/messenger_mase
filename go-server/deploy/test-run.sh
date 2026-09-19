@@ -40,7 +40,7 @@ check() { # $1=описание $2=ожидаемый код $3=подстрок
       "$desc" "$CODE" "$want" "$needle" "$OUT"
   fi
 }
-exec_run() { OUT="$(timeout 20 env -u MASE_DB -u MASE_ADDR -u MASE_MEDIA -u MASE_DEV_DB -u MASE_DEV_PORT -u MASE_ALLOW_NEW_DB "$@" 2>&1)"; CODE=$?; }
+exec_run() { OUT="$(timeout 20 env -u MASE_DB -u MASE_ADDR -u MASE_MEDIA -u MASE_DEV_DB -u MASE_DEV_PORT -u MASE_ALLOW_NEW_DB -u MASE_I_MEAN_PROD "$@" 2>&1)"; CODE=$?; }
 
 echo "аргументы"
 exec_run bash "$RUN";                                   check "без аргументов — ошибка использования" 2 "Использование"
@@ -48,16 +48,40 @@ exec_run bash "$RUN" staging;                           check "неизвест�
 exec_run bash "$RUN" dev prod;                          check "лишний аргумент — ошибка"              2 "Использование"
 
 echo "prod"
-exec_run env MASE_DRY_RUN=1 bash "$RUN" prod;           check "prod без MASE_DB не стартует"          1 "MASE_DB"
-exec_run env MASE_DRY_RUN=1 MASE_DB="$TMP/nope.sqlite" bash "$RUN" prod
+exec_run env MASE_DRY_RUN=1 MASE_I_MEAN_PROD=1 bash "$RUN" prod;  check "prod без MASE_DB не стартует"          1 "MASE_DB"
+exec_run env MASE_DRY_RUN=1 MASE_I_MEAN_PROD=1 MASE_DB="$TMP/nope.sqlite" bash "$RUN" prod
 check "prod с несуществующим файлом БД не стартует"     1 "MASE_ALLOW_NEW_DB"
-exec_run env MASE_DRY_RUN=1 MASE_DB="$TMP/nope.sqlite" MASE_ALLOW_NEW_DB=1 bash "$RUN" prod
+exec_run env MASE_DRY_RUN=1 MASE_I_MEAN_PROD=1 MASE_DB="$TMP/nope.sqlite" MASE_ALLOW_NEW_DB=1 bash "$RUN" prod
 check "prod с MASE_ALLOW_NEW_DB=1 допускает новую БД"   0 "$TMP/nope.sqlite"
-exec_run env MASE_DRY_RUN=1 MASE_DB="$MASE_DATA_DIR/mase.sqlite" bash "$RUN" prod
+exec_run env MASE_DRY_RUN=1 MASE_I_MEAN_PROD=1 MASE_DB="$MASE_DATA_DIR/mase.sqlite" bash "$RUN" prod
 check "prod с существующей БД: режим, порт, туннель"    0 "режим: prod"
 check "prod использует порт 8080"                       0 ":8080"
 check "prod запускает туннель"                          0 "туннель: да"
 [[ ! -e "$TMP/nope.sqlite" ]] && { pass=$((pass+1)); echo "  ok   сухой запуск не создал файл БД"; } || { fail=$((fail+1)); echo "  FAIL сухой запуск создал БД"; }
+
+echo "prod: защита от случайного запуска (MASE_I_MEAN_PROD=1 и интерактивный терминал)"
+exec_run env MASE_DRY_RUN=1 MASE_DB="$MASE_DATA_DIR/mase.sqlite" bash "$RUN" prod
+check "prod без MASE_I_MEAN_PROD отказывает"                 1 "MASE_I_MEAN_PROD"
+exec_run env MASE_DRY_RUN=1 MASE_I_MEAN_PROD=0 MASE_DB="$MASE_DATA_DIR/mase.sqlite" bash "$RUN" prod
+check "MASE_I_MEAN_PROD=0 не считается подтверждением"       1 "MASE_I_MEAN_PROD"
+exec_run env MASE_DRY_RUN=1 MASE_I_MEAN_PROD=yes MASE_DB="$MASE_DATA_DIR/mase.sqlite" bash "$RUN" prod
+check "MASE_I_MEAN_PROD=yes не считается подтверждением"     1 "MASE_I_MEAN_PROD"
+exec_run env MASE_DRY_RUN=1 MASE_I_MEAN_PROD=1 MASE_DB="$MASE_DATA_DIR/mase.sqlite" bash "$RUN" prod
+check "сухой запуск prod не требует терминала"               0 "режим: prod"
+
+# Реальный (не сухой) запуск без терминала: должен отказать ДО сборки. Заглушка go — страховка.
+exec_run env MASE_I_MEAN_PROD=1 MASE_DB="$MASE_DATA_DIR/mase.sqlite" bash "$RUN" prod </dev/null
+check "prod без терминала (stdin не tty) отказывает"         1 "терминал"
+[[ "$OUT" != *"test shim"* ]] && { pass=$((pass+1)); echo "  ok   отказ случился до сборки (заглушка go не вызывалась)"; } || { fail=$((fail+1)); echo "  FAIL защита сработала слишком поздно: дошло до сборки"; }
+
+# Положительный контроль: в настоящем терминале защита пропускает и доходит до заглушки go.
+if command -v script >/dev/null 2>&1; then
+  OUT="$(timeout 20 script -qec "env MASE_I_MEAN_PROD=1 MASE_DB='$MASE_DATA_DIR/mase.sqlite' bash '$RUN' prod" /dev/null 2>&1 </dev/null)"; CODE=$?
+  if [[ "$OUT" == *"test shim: go"* ]]; then pass=$((pass+1)); echo "  ok   в псевдотерминале защита пропускает (дошло до заглушки go)"
+  else fail=$((fail+1)); echo "  FAIL в псевдотерминале защита не пропустила: код=$CODE вывод: $OUT"; fi
+else
+  echo "  --   пропущено: нет команды script (положительный контроль в терминале не проверен)"
+fi
 
 echo "dev"
 exec_run env MASE_DRY_RUN=1 bash "$RUN" dev
