@@ -27,7 +27,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="mase"
+                    android:scheme="${inviteScheme}"
                     android:host="invite" />
             </intent-filter>
         </activity>

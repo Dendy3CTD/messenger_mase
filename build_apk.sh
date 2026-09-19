@@ -2,9 +2,12 @@
 # ============================================================
 #  Mase Messenger — сборка APK
 #  Использование:
-#    ./build_apk.sh              — собрать debug APK
-#    ./build_apk.sh release      — собрать release APK
-#    ./build_apk.sh install      — собрать и установить на подключённый телефон
+#    ./build_apk.sh              — собрать prod debug APK (com.mase.messenger, прод-сервер)
+#    ./build_apk.sh dev          — собрать dev debug APK (com.mase.messenger.dev, локальный сервер)
+#                                  для телефона: MASE_DEV_HOST=<IP машины в LAN> ./build_apk.sh dev
+#    ./build_apk.sh release      — собрать prod release APK (неподписанный)
+#    ./build_apk.sh install      — собрать prod debug и установить на подключённый телефон
+#    ./build_apk.sh install-dev  — собрать dev debug и установить на подключённый телефон
 #    ./build_apk.sh server       — пересобрать только сервер (требует libsqlite3-dev)
 # ============================================================
 set -e
@@ -12,8 +15,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_DIR="$SCRIPT_DIR/android-client"
 SERVER_DIR="$SCRIPT_DIR/cpp-server"
-APK_DEBUG="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
-APK_RELEASE="$ANDROID_DIR/app/build/outputs/apk/release/app-release-unsigned.apk"
+APK_DEBUG="$ANDROID_DIR/app/build/outputs/apk/prod/debug/app-prod-debug.apk"
+APK_DEV="$ANDROID_DIR/app/build/outputs/apk/dev/debug/app-dev-debug.apk"
+APK_RELEASE="$ANDROID_DIR/app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk"
 OUTPUT_DIR="$SCRIPT_DIR/dist"
 
 MODE="${1:-debug}"
@@ -63,25 +67,26 @@ if [ ! -f "$LOCAL_PROPS" ]; then
 fi
 
 # ── Сборка APK ─────────────────────────────────────────────
+case "$MODE" in
+    debug|dev|release|install|install-dev) ;;
+    *) error "Неизвестный режим: $MODE (debug | dev | release | install | install-dev | server)" ;;
+esac
+
 cd "$ANDROID_DIR"
 mkdir -p "$OUTPUT_DIR"
 
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
-if [ "$MODE" = "release" ]; then
-    info "Сборка Release APK (неподписанный)..."
-    ./gradlew :app:assembleRelease --no-daemon
-    if [ -f "$APK_RELEASE" ]; then
-        DEST="$OUTPUT_DIR/mase-${TIMESTAMP}-release-unsigned.apk"
-        cp "$APK_RELEASE" "$DEST"
-        success "Release APK: $DEST"
-    else
-        error "APK не найден: $APK_RELEASE"
-    fi
+# Адрес dev-сервера для реального телефона (для эмулятора не нужен: 10.0.2.2)
+DEV_ARGS=()
+if [ -n "${MASE_DEV_HOST:-}" ]; then
+    DEV_ARGS+=("-PmaseDevHost=$MASE_DEV_HOST")
+fi
 
-elif [ "$MODE" = "install" ]; then
-    info "Сборка и установка Debug APK на телефон..."
-    # Проверить adb
+# Установка на телефон: $1 = задача Gradle, $2 = путь к APK, $3 = applicationId; остальное — доп. аргументы Gradle
+install_on_phone() {
+    local task="$1" apk="$2" app_id="$3"
+    shift 3
     if ! command -v adb &> /dev/null; then
         warn "adb не найден в PATH. Попытка найти в SDK..."
         ADB_PATH="$(cat "$LOCAL_PROPS" | grep sdk.dir | cut -d'=' -f2)/platform-tools/adb"
@@ -95,31 +100,60 @@ elif [ "$MODE" = "install" ]; then
     if [ "$DEVICES" -eq 0 ]; then
         error "Нет подключённых устройств. Подключите телефон по USB и разрешите отладку."
     fi
-    ./gradlew :app:assembleDebug --no-daemon
-    adb install -r "$APK_DEBUG"
+    ./gradlew "$task" --no-daemon "$@"
+    adb install -r "$apk"
     success "Установлено на телефон!"
-    adb shell monkey -p com.mase.messenger -c android.intent.category.LAUNCHER 1 &>/dev/null || true
+    adb shell monkey -p "$app_id" -c android.intent.category.LAUNCHER 1 &>/dev/null || true
     info "Приложение запущено"
+}
 
-else
-    info "Сборка Debug APK..."
-    ./gradlew :app:assembleDebug --no-daemon
-    if [ -f "$APK_DEBUG" ]; then
-        DEST="$OUTPUT_DIR/mase-${TIMESTAMP}-debug.apk"
-        cp "$APK_DEBUG" "$DEST"
+# Сборка и копирование в dist/: $1 = задача Gradle, $2 = путь к APK, $3 = метка (prod-debug, dev-debug), остальное — доп. аргументы Gradle
+build_debug() {
+    local task="$1" apk="$2" label="$3"
+    shift 3
+    ./gradlew "$task" --no-daemon "$@"
+    if [ -f "$apk" ]; then
+        DEST="$OUTPUT_DIR/mase-${TIMESTAMP}-${label}.apk"
+        cp "$apk" "$DEST"
         # Создать/обновить симлинк latest
-        ln -sf "$DEST" "$OUTPUT_DIR/mase-latest-debug.apk" 2>/dev/null || cp "$DEST" "$OUTPUT_DIR/mase-latest-debug.apk"
-        success "Debug APK собран!"
+        ln -sf "$DEST" "$OUTPUT_DIR/mase-latest-${label}.apk" 2>/dev/null || cp "$DEST" "$OUTPUT_DIR/mase-latest-${label}.apk"
+        success "APK собран (${label})!"
         echo ""
         echo -e "  ${BOLD}Путь:${RESET}    $DEST"
-        echo -e "  ${BOLD}Ярлык:${RESET}   $OUTPUT_DIR/mase-latest-debug.apk"
+        echo -e "  ${BOLD}Ярлык:${RESET}   $OUTPUT_DIR/mase-latest-${label}.apk"
         echo ""
         echo -e "${YELLOW}Установить на телефон:${RESET}"
         echo "  adb install -r \"$DEST\""
         echo ""
-        echo -e "${YELLOW}Или запустить скрипт с install:${RESET}"
-        echo "  ./build_apk.sh install"
     else
-        error "APK не найден: $APK_DEBUG"
+        error "APK не найден: $apk"
     fi
+}
+
+if [ "$MODE" = "release" ]; then
+    info "Сборка prod Release APK (неподписанный)..."
+    ./gradlew :app:assembleProdRelease --no-daemon
+    if [ -f "$APK_RELEASE" ]; then
+        DEST="$OUTPUT_DIR/mase-${TIMESTAMP}-release-unsigned.apk"
+        cp "$APK_RELEASE" "$DEST"
+        success "Release APK: $DEST"
+    else
+        error "APK не найден: $APK_RELEASE"
+    fi
+
+elif [ "$MODE" = "install" ]; then
+    info "Сборка и установка prod Debug APK на телефон..."
+    install_on_phone :app:assembleProdDebug "$APK_DEBUG" com.mase.messenger
+
+elif [ "$MODE" = "install-dev" ]; then
+    info "Сборка и установка dev Debug APK на телефон..."
+    install_on_phone :app:assembleDevDebug "$APK_DEV" com.mase.messenger.dev "${DEV_ARGS[@]}"
+
+elif [ "$MODE" = "dev" ]; then
+    info "Сборка dev Debug APK (локальный сервер)..."
+    build_debug :app:assembleDevDebug "$APK_DEV" dev-debug "${DEV_ARGS[@]}"
+
+else
+    info "Сборка prod Debug APK..."
+    build_debug :app:assembleProdDebug "$APK_DEBUG" prod-debug
 fi

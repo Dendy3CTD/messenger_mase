@@ -9,6 +9,7 @@ import com.mase.messenger.data.local.MessageEntity
 import com.mase.messenger.data.session.PublicUserProfile
 import com.mase.messenger.data.session.SessionRepository
 import com.mase.messenger.BuildConfig
+import com.mase.messenger.invite.InviteLink
 import com.mase.messenger.media.MediaUploader
 import com.mase.messenger.network.WsMessengerClient
 import kotlinx.coroutines.CoroutineScope
@@ -592,5 +593,5 @@ class MessengerEngine(private val app: Application) {
     }
 
     fun inviteLinkFor(username: String): String =
-        "mase://invite?username=${Uri.encode(username.lowercase())}"
+        InviteLink.build(BuildConfig.INVITE_SCHEME, username)
 }

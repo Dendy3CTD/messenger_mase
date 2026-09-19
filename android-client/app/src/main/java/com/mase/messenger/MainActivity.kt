@@ -9,6 +9,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mase.messenger.data.session.SessionSnapshot
+import com.mase.messenger.invite.InviteLink
 import com.mase.messenger.messaging.MessengerEngine
 import com.mase.messenger.ui.AppRoot
 import com.mase.messenger.ui.theme.MaseTheme
@@ -34,8 +35,9 @@ class MainActivity : ComponentActivity() {
 
     private fun handleInviteIntent(intent: Intent?, engine: MessengerEngine) {
         val uri: Uri = intent?.data ?: return
-        if (uri.scheme != "mase" || uri.host != "invite") return
-        val username = uri.getQueryParameter("username")?.trim()?.lowercase() ?: return
+        val username = InviteLink.usernameFrom(
+            BuildConfig.INVITE_SCHEME, uri.scheme, uri.host, uri.getQueryParameter("username")
+        ) ?: return
         engine.setInviteUsername(username)
     }
 }

@@ -15,9 +15,32 @@ android {
         versionCode = 3
         versionName = "0.3.0"
 
-        buildConfigField("String", "WS_URL",    "\"wss://mase.nemilk.ru/ws\"")
-        buildConfigField("String", "MEDIA_URL", "\"https://mase.nemilk.ru\"")
-        // For local LAN dev: use ws://192.168.1.x:8080/ws
+    }
+
+    // Two environments: prod talks to the public server over TLS, dev talks to a local
+    // server started with `run.sh dev` (port 8081) and may use cleartext.
+    // A physical phone needs the developer machine's LAN address:
+    //   ./gradlew :app:assembleDevDebug -PmaseDevHost=192.168.1.10
+    flavorDimensions += "env"
+    productFlavors {
+        create("prod") {
+            dimension = "env"
+            buildConfigField("String", "WS_URL", "\"wss://mase.nemilk.ru/ws\"")
+            buildConfigField("String", "MEDIA_URL", "\"https://mase.nemilk.ru\"")
+            buildConfigField("String", "INVITE_SCHEME", "\"mase\"")
+            manifestPlaceholders["inviteScheme"] = "mase"
+        }
+        create("dev") {
+            dimension = "env"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            val devHost = (project.findProperty("maseDevHost") as String?) ?: "10.0.2.2"
+            val devPort = (project.findProperty("maseDevPort") as String?) ?: "8081"
+            buildConfigField("String", "WS_URL", "\"ws://$devHost:$devPort/ws\"")
+            buildConfigField("String", "MEDIA_URL", "\"http://$devHost:$devPort\"")
+            buildConfigField("String", "INVITE_SCHEME", "\"mase-dev\"")
+            manifestPlaceholders["inviteScheme"] = "mase-dev"
+        }
     }
 
     buildTypes {
@@ -71,6 +94,8 @@ dependencies {
 
     // WebSocket (replaces raw TCP)
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    testImplementation("junit:junit:4.13.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.6.8")
     debugImplementation("androidx.compose.ui:ui-test-manifest:1.6.8")

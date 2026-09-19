@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dev only: plain ws:// and http:// to a developer machine (emulator 10.0.2.2 or a LAN IP).
+     Domain rules cannot match arbitrary LAN IPs, hence the base config. Never used in prod. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
