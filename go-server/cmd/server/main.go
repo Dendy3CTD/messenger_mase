@@ -1,11 +1,15 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/websocket"
+	"github.com/mase/server/internal/config"
 	"github.com/mase/server/internal/db"
 	"github.com/mase/server/internal/handler"
 	"github.com/mase/server/internal/hub"
@@ -20,18 +24,25 @@ var upgrader = websocket.Upgrader{
 }
 
 func main() {
-	addr     := flag.String("addr", ":8080", "HTTP listen address")
-	dbPath   := flag.String("db", "mase.sqlite", "SQLite database path")
-	mediaPath := flag.String("media", "./media", "Media storage directory")
-	flag.Parse()
+	cfg, err := config.Load(os.Args[1:], os.Getenv, os.Stderr)
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "mase-server:", err)
+		os.Exit(2)
+	}
+	log.Printf("[CONFIG] addr=%s (%s) db=%s (%s) media=%s (%s) log-level=%s (%s)",
+		cfg.Addr, cfg.Sources["addr"], cfg.DB, cfg.Sources["db"],
+		cfg.Media, cfg.Sources["media"], cfg.LogLevel, cfg.Sources["log-level"])
 
 	// ── Database ──────────────────────────────────────────────────────────────
-	if err := db.Open(*dbPath); err != nil {
+	if err := db.Open(cfg.DB); err != nil {
 		log.Fatalf("[DB] %v", err)
 	}
 
 	// ── Media ─────────────────────────────────────────────────────────────────
-	if err := media.Init(*mediaPath); err != nil {
+	if err := media.Init(cfg.Media); err != nil {
 		log.Fatalf("[MEDIA] %v", err)
 	}
 
@@ -63,8 +74,8 @@ func main() {
 		w.Write([]byte("ok"))
 	})
 
-	log.Printf("[SERVER] listening on %s", *addr)
-	if err := http.ListenAndServe(*addr, mux); err != nil {
+	log.Printf("[SERVER] listening on %s", cfg.Addr)
+	if err := http.ListenAndServe(cfg.Addr, mux); err != nil {
 		log.Fatalf("[SERVER] %v", err)
 	}
 }
