@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 private const val TAG = "WsClient"
 
 /**
- * WebSocket messenger client — replaces TcpMessengerClient.
+ * WebSocket messenger client.
  *
  * Connects to wss://host/ws, sends/receives JSON text frames.
  * Fully compatible with the Go server protocol.
