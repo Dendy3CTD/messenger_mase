@@ -10,7 +10,7 @@
 /go-server/deploy/media/
 
 # --- Собранные бинарники и APK ---
-/go-server/deploy/mase-server
+/go-server/deploy/mase-server*
 /dist/
 *.apk
 *.aab
