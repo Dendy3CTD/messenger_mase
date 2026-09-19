@@ -8,13 +8,11 @@
 #    ./build_apk.sh release      — собрать prod release APK (неподписанный)
 #    ./build_apk.sh install      — собрать prod debug и установить на подключённый телефон
 #    ./build_apk.sh install-dev  — собрать dev debug и установить на подключённый телефон
-#    ./build_apk.sh server       — пересобрать только сервер (требует libsqlite3-dev)
 # ============================================================
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_DIR="$SCRIPT_DIR/android-client"
-SERVER_DIR="$SCRIPT_DIR/cpp-server"
 APK_DEBUG="$ANDROID_DIR/app/build/outputs/apk/prod/debug/app-prod-debug.apk"
 APK_DEV="$ANDROID_DIR/app/build/outputs/apk/dev/debug/app-dev-debug.apk"
 APK_RELEASE="$ANDROID_DIR/app/build/outputs/apk/prod/release/app-prod-release-unsigned.apk"
@@ -36,20 +34,6 @@ echo -e "${BOLD}║   Mase Messenger — Build     ║${RESET}"
 echo -e "${BOLD}╚══════════════════════════════╝${RESET}"
 echo ""
 
-# ── Сборка сервера ─────────────────────────────────────────
-if [ "$MODE" = "server" ]; then
-    info "Сборка C++ сервера..."
-    cd "$SERVER_DIR"
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-    cmake --build build -j"$(nproc)"
-    success "Сервер собран: $SERVER_DIR/build/mase_server"
-    echo ""
-    echo -e "${YELLOW}Запуск сервера:${RESET}"
-    echo "  export MASE_DEV_RETURN_OTP=1"
-    echo "  cd $SERVER_DIR && ./build/mase_server 5555 mase.sqlite"
-    exit 0
-fi
-
 # ── Проверка local.properties ──────────────────────────────
 LOCAL_PROPS="$ANDROID_DIR/local.properties"
 if [ ! -f "$LOCAL_PROPS" ]; then
@@ -69,7 +53,7 @@ fi
 # ── Сборка APK ─────────────────────────────────────────────
 case "$MODE" in
     debug|dev|release|install|install-dev) ;;
-    *) error "Неизвестный режим: $MODE (debug | dev | release | install | install-dev | server)" ;;
+    *) error "Неизвестный режим: $MODE (debug | dev | release | install | install-dev)" ;;
 esac
 
 cd "$ANDROID_DIR"
