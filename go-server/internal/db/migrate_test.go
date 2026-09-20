@@ -362,3 +362,28 @@ func TestForeignKeysAreEnforced(t *testing.T) {
 		t.Fatal("нарушение внешнего ключа должно отклоняться")
 	}
 }
+
+// The golden file pins the schema produced by the baseline. It was generated with the
+// mattn/go-sqlite3 driver and must stay identical after switching to modernc.org/sqlite:
+// this is the schema cross-check for the driver change. Regenerate deliberately with
+// UPDATE_GOLDEN=1 only when a migration changes the schema.
+func TestSchemaMatchesGolden(t *testing.T) {
+	d, _ := tempDB(t)
+	if err := Migrate(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	got := schemaSnapshot(t, d)
+	golden := filepath.Join("testdata", "schema_v1.golden")
+	if os.Getenv("UPDATE_GOLDEN") == "1" {
+		if err := os.WriteFile(golden, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != string(want) {
+		t.Fatalf("схема отличается от эталона %s\n--- получено:\n%s\n--- эталон:\n%s", golden, got, want)
+	}
+}

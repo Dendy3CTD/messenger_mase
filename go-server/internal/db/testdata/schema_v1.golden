@@ -1,0 +1,53 @@
+index idx_group_members on group_members
+index idx_messages_chat on messages
+index idx_tokens_user on tokens
+table chats on chats
+  col 0 id INTEGER notnull=0 default="" pk=1
+  col 1 kind TEXT notnull=1 default="'direct'" pk=0
+  col 2 u1 INTEGER notnull=0 default="" pk=0
+  col 3 u2 INTEGER notnull=0 default="" pk=0
+table friends on friends
+  col 0 user_id INTEGER notnull=1 default="" pk=1
+  col 1 friend_id INTEGER notnull=1 default="" pk=2
+table group_members on group_members
+  col 0 group_id INTEGER notnull=1 default="" pk=1
+  col 1 user_id INTEGER notnull=1 default="" pk=2
+  col 2 role TEXT notnull=1 default="'member'" pk=0
+  col 3 joined_at INTEGER notnull=1 default="strftime('%s','now')" pk=0
+table groups on groups
+  col 0 id INTEGER notnull=0 default="" pk=1
+  col 1 title TEXT notnull=1 default="" pk=0
+  col 2 avatar_media_id TEXT notnull=1 default="''" pk=0
+  col 3 created_by INTEGER notnull=1 default="" pk=0
+  col 4 created_at INTEGER notnull=1 default="strftime('%s','now')" pk=0
+table messages on messages
+  col 0 id INTEGER notnull=0 default="" pk=1
+  col 1 chat_id INTEGER notnull=1 default="" pk=0
+  col 2 sender_id INTEGER notnull=1 default="" pk=0
+  col 3 body TEXT notnull=1 default="''" pk=0
+  col 4 msg_type TEXT notnull=1 default="'text'" pk=0
+  col 5 media_id TEXT notnull=1 default="''" pk=0
+  col 6 status TEXT notnull=1 default="'sent'" pk=0
+  col 7 ts INTEGER notnull=1 default="" pk=0
+  col 8 reply_to_id INTEGER notnull=0 default="" pk=0
+  col 9 edited_at INTEGER notnull=0 default="" pk=0
+  col 10 is_deleted INTEGER notnull=1 default="0" pk=0
+  col 11 duration_sec INTEGER notnull=1 default="0" pk=0
+table push_tokens on push_tokens
+  col 0 user_id INTEGER notnull=0 default="" pk=1
+  col 1 fcm_token TEXT notnull=1 default="" pk=0
+  col 2 updated_at INTEGER notnull=1 default="strftime('%s','now')" pk=0
+table tokens on tokens
+  col 0 token TEXT notnull=0 default="" pk=1
+  col 1 user_id INTEGER notnull=1 default="" pk=0
+  col 2 created_at INTEGER notnull=1 default="strftime('%s','now')" pk=0
+table users on users
+  col 0 id INTEGER notnull=0 default="" pk=1
+  col 1 phone TEXT notnull=1 default="" pk=0
+  col 2 display_name TEXT notnull=1 default="''" pk=0
+  col 3 username TEXT notnull=0 default="" pk=0
+  col 4 bio TEXT notnull=1 default="''" pk=0
+  col 5 password_hash TEXT notnull=1 default="''" pk=0
+  col 6 avatar_media_id TEXT notnull=1 default="''" pk=0
+  col 7 created_at INTEGER notnull=1 default="strftime('%s','now')" pk=0
+global chat kind=global
