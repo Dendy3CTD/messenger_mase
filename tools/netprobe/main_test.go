@@ -44,3 +44,45 @@ func TestPingFailsByDeadlineWhenPeerStopsReading(t *testing.T) {
 		t.Fatal("ping завис: у записи нет дедлайна")
 	}
 }
+
+// Frames up to 20 KB are answered, bigger ones are swallowed: the ladder must pass the
+// small sizes, fail at 64 KB and stop there.
+func TestLadderStopsAtFirstFailingSize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		up := websocket.Upgrader{}
+		c, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		for {
+			_, msg, err := c.ReadMessage()
+			if err != nil {
+				return
+			}
+			if len(msg) <= 20<<10 {
+				c.WriteMessage(websocket.TextMessage, []byte(`{"type":"pong"}`))
+			}
+		}
+	}))
+	defer srv.Close()
+
+	c, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	p := &probe{}
+	if p.ladder(newWS(c), 500*time.Millisecond) {
+		t.Fatal("лестница должна была провалиться на 64 КБ")
+	}
+	var got []string
+	for _, r := range p.rows {
+		got = append(got, r.step+"="+map[bool]string{true: "ok", false: "FAIL"}[r.ok])
+	}
+	want := "ws кадр 4 КБ=ok,ws кадр 16 КБ=ok,ws кадр 64 КБ=FAIL"
+	if strings.Join(got, ",") != want {
+		t.Fatalf("строки: %v, ожидалось %s", got, want)
+	}
+}

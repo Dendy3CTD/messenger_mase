@@ -204,6 +204,10 @@ func main() {
 	t = time.Now()
 	p.add("ping", t, w.ping(0, replyTimout), "")
 
+	if !p.ladder(w, replyTimout) {
+		p.finish()
+	}
+
 	total := 1 << 20
 	t = time.Now()
 	var werr error
@@ -219,6 +223,25 @@ func main() {
 		p.holdConn(w, *hold, *every)
 	}
 	p.finish()
+}
+
+// frameLadder tells "the path cuts by frame size" from "by total volume": every size is
+// a separate ping frame, and the first failure stops the ladder (the connection is
+// unusable after a write timeout anyway).
+var frameLadder = []int{4 << 10, 16 << 10, 64 << 10, 128 << 10, 256 << 10}
+
+func (p *probe) ladder(w *wsConn, d time.Duration) bool {
+	sent := 0
+	for _, size := range frameLadder {
+		t := time.Now()
+		err := w.ping(size, d)
+		detail := fmt.Sprintf("всего отправлено %d КБ", (sent+size)>>10)
+		if !p.add(fmt.Sprintf("ws кадр %d КБ", size>>10), t, err, detail) {
+			return false
+		}
+		sent += size
+	}
+	return true
 }
 
 func tcRemote(c net.Conn) string {
