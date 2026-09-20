@@ -204,16 +204,6 @@ fun LoginScreen(engine: MessengerEngine) {
                     Text("Зарегистрироваться")
                 }
             }
-
-            if (!isOnline) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    "Ищем сервер Mase в локальной сети…",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-            }
         }
     }
 }
