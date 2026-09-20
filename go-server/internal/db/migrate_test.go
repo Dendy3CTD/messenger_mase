@@ -338,3 +338,27 @@ func TestMigrationAbortsWhenBackupFails(t *testing.T) {
 		t.Fatal("миграция началась, хотя копию сделать не удалось")
 	}
 }
+
+func TestConnectionPragmas(t *testing.T) {
+	d, _ := tempDB(t)
+	for pragma, want := range map[string]string{
+		"journal_mode": "wal",
+		"foreign_keys": "1",
+		"synchronous":  "1", // NORMAL
+		"busy_timeout": "5000",
+	} {
+		var got string
+		if err := d.QueryRow(`PRAGMA ` + pragma).Scan(&got); err != nil || got != want {
+			t.Errorf("PRAGMA %s = %q (err %v), ожидалось %q", pragma, got, err, want)
+		}
+	}
+}
+
+func TestForeignKeysAreEnforced(t *testing.T) {
+	d, _ := tempDB(t)
+	mustExec(t, d, `CREATE TABLE parent (id INTEGER PRIMARY KEY)`)
+	mustExec(t, d, `CREATE TABLE child (id INTEGER PRIMARY KEY, pid INTEGER NOT NULL REFERENCES parent(id))`)
+	if _, err := d.Exec(`INSERT INTO child(pid) VALUES(42)`); err == nil {
+		t.Fatal("нарушение внешнего ключа должно отклоняться")
+	}
+}

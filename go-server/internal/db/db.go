@@ -27,9 +27,16 @@ func Open(path string) error {
 	return nil
 }
 
+// dsn builds the connection string. The pragmas are applied to every connection:
+// WAL journal, 5 s busy timeout, foreign keys enforced (the baseline has none yet; later
+// migrations add them) and synchronous=NORMAL, which is safe with WAL.
+func dsn(path string) string {
+	return path + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL"
+}
+
 // OpenRaw opens the database without applying migrations (used by `migrate` commands and tests).
 func OpenRaw(path string) (*sql.DB, error) {
-	d, err := sql.Open("sqlite3", path+"?_journal_mode=WAL&_busy_timeout=5000")
+	d, err := sql.Open("sqlite3", dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
