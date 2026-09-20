@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 func tempDB(t *testing.T) (*sql.DB, string) {
@@ -220,5 +222,119 @@ func TestDownBelowBaselineIsRefused(t *testing.T) {
 	}
 	if err := migrateDown(ctx, d, testFS(), 0); err == nil {
 		t.Fatal("0 шагов должно быть ошибкой")
+	}
+}
+
+func fixedNow(t *testing.T) {
+	t.Helper()
+	old := now
+	now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { now = old })
+}
+
+func backups(t *testing.T, dbPath string) []string {
+	t.Helper()
+	m, err := filepath.Glob(dbPath + ".pre-migrate-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestNoBackupForEmptyDatabase(t *testing.T) {
+	d, path := tempDB(t)
+	if err := Migrate(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if b := backups(t, path); len(b) != 0 {
+		t.Fatalf("для пустой БД копия не нужна: %v", b)
+	}
+}
+
+func TestBackupBeforeMigratingExistingData(t *testing.T) {
+	fixedNow(t)
+	d, path := tempDB(t)
+	applyLegacy(t, d)
+	mustExec(t, d, `INSERT INTO users(phone, display_name) VALUES('+70000000001','A')`)
+	mustExec(t, d, `INSERT INTO messages(chat_id, sender_id, body, ts) VALUES(1,1,'hi',1)`)
+
+	if err := Migrate(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	want := path + ".pre-migrate-0-to-1-20260920-120000.sqlite"
+	b := backups(t, path)
+	if len(b) != 1 || b[0] != want {
+		t.Fatalf("копии: %v, ожидалась %s", b, want)
+	}
+	if st, err := os.Stat(want); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("права копии: %v %v", st, err)
+	}
+	cp, err := sql.Open("sqlite3", "file:"+want+"?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cp.Close()
+	var users, msgs int
+	cp.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&users)
+	cp.QueryRow(`SELECT COUNT(*) FROM messages`).Scan(&msgs)
+	if users != 1 || msgs != 1 {
+		t.Fatalf("в копии users=%d messages=%d", users, msgs)
+	}
+	var goose int
+	cp.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='goose_db_version'`).Scan(&goose)
+	if goose != 0 {
+		t.Fatal("копия должна отражать состояние ДО миграции")
+	}
+	// нечего применять — новой копии нет
+	fixedNowLater := func() time.Time { return time.Date(2026, 9, 20, 12, 0, 5, 0, time.UTC) }
+	now = fixedNowLater
+	if err := Migrate(context.Background(), d); err != nil {
+		t.Fatal(err)
+	}
+	if b := backups(t, path); len(b) != 1 {
+		t.Fatalf("без ожидающих миграций копия не нужна: %v", b)
+	}
+}
+
+func TestBackupBeforeDownAndForNewMigration(t *testing.T) {
+	fixedNow(t)
+	d, path := tempDB(t)
+	ctx := context.Background()
+	applyLegacy(t, d)
+	mustExec(t, d, `INSERT INTO users(phone) VALUES('+70000000001')`)
+	if err := migrateUp(ctx, d, testFS()); err != nil { // baseline (копия 0→2) и миграция 2
+		t.Fatal(err)
+	}
+	now = func() time.Time { return time.Date(2026, 9, 20, 12, 0, 9, 0, time.UTC) }
+	if err := migrateDown(ctx, d, testFS(), 1); err != nil {
+		t.Fatal(err)
+	}
+	got := backups(t, path)
+	if len(got) != 2 {
+		t.Fatalf("ожидались копии перед up и перед down: %v", got)
+	}
+	if !strings.HasSuffix(got[0], "-0-to-2-20260920-120000.sqlite") && !strings.HasSuffix(got[1], "-0-to-2-20260920-120000.sqlite") {
+		t.Fatalf("нет копии up: %v", got)
+	}
+	if !strings.Contains(got[0]+got[1], "pre-migrate-2-to-1-20260920-120009.sqlite") {
+		t.Fatalf("нет копии down: %v", got)
+	}
+}
+
+func TestMigrationAbortsWhenBackupFails(t *testing.T) {
+	fixedNow(t)
+	d, path := tempDB(t)
+	applyLegacy(t, d)
+	mustExec(t, d, `INSERT INTO users(phone) VALUES('+70000000001')`)
+	// имя копии занято: VACUUM INTO откажет, миграция не должна начаться
+	busy := path + ".pre-migrate-0-to-1-20260920-120000.sqlite"
+	if err := os.WriteFile(busy, []byte("занято"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Migrate(context.Background(), d); err == nil || !strings.Contains(err.Error(), "миграция не выполнена") {
+		t.Fatalf("ожидался отказ из-за копии, получено %v", err)
+	}
+	if tableExists(t, d, "goose_db_version") {
+		t.Fatal("миграция началась, хотя копию сделать не удалось")
 	}
 }
