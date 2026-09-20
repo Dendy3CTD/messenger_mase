@@ -4,6 +4,13 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Room writes its schema (one JSON per database version) here; the files are committed so a
+// change to the entities without a version bump and a migration shows up as a git diff, and
+// MigrationTestHelper can open old versions.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 android {
     namespace = "com.mase.messenger"
     compileSdk = 34

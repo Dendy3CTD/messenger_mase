@@ -72,7 +72,7 @@ interface MessageDao {
     suspend fun updateStatus(id: Long, status: String)
 }
 
-@Database(entities = [ChatEntity::class, MessageEntity::class], version = 3, exportSchema = false)
+@Database(entities = [ChatEntity::class, MessageEntity::class], version = 3, exportSchema = true)
 abstract class MaseDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
     abstract fun messageDao(): MessageDao
