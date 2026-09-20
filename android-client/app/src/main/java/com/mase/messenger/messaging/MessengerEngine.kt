@@ -33,7 +33,6 @@ import kotlin.math.min
 
 sealed class ConnectionUi {
     data object Idle : ConnectionUi()
-    data object Discovering : ConnectionUi()
     data object Connecting : ConnectionUi()
     data object Online : ConnectionUi()
     data class Problem(val text: String) : ConnectionUi()

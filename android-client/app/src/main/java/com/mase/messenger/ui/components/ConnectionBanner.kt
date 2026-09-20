@@ -21,7 +21,6 @@ fun ConnectionBanner(conn: ConnectionUi) {
     val (text, isError) = when (conn) {
         ConnectionUi.Idle       -> return
         ConnectionUi.Online     -> return
-        ConnectionUi.Discovering -> "Ищем сервер в сети…" to false
         ConnectionUi.Connecting  -> "Подключаемся…" to false
         is ConnectionUi.Problem  -> conn.text to true
     }
