@@ -113,7 +113,10 @@ func (w *wsConn) await(typ string, d time.Duration) (map[string]any, error) {
 	}
 }
 
-func (w *wsConn) send(v any) error {
+// send writes with a deadline: without it a stalled path blocks in the kernel send
+// buffer forever (seen through Cloudflare on 2026-09-20: the 1 MB step hung).
+func (w *wsConn) send(v any, d time.Duration) error {
+	w.c.SetWriteDeadline(time.Now().Add(d))
 	return w.c.WriteJSON(v)
 }
 
@@ -122,7 +125,7 @@ func (w *wsConn) ping(pad int, d time.Duration) error {
 	if pad > 0 {
 		m["pad"] = strings.Repeat("x", pad)
 	}
-	if err := w.send(m); err != nil {
+	if err := w.send(m, d); err != nil {
 		return err
 	}
 	_, err := w.await("pong", d)
@@ -188,7 +191,7 @@ func main() {
 	if *register {
 		req["displayName"], req["username"] = "netprobe", "netprobe"
 	}
-	if err = w.send(req); err == nil {
+	if err = w.send(req, replyTimout); err == nil {
 		var m map[string]any
 		if m, err = w.await("auth.session", replyTimout); err == nil {
 			w.token, _ = m["token"].(string)
