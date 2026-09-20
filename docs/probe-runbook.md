@@ -30,7 +30,7 @@ go build -o netprobe .            # замерщик для этого комп�
 
 ```bash
 SRV=<IP-сервера>
-scp ~/code/mase/ops/vps-bootstrap.sh ~/code/mase/ops/probe/install-probe.sh ~/code/mase/ops/probe/probeserver.service ~/.ssh/id_ed25519.pub /tmp/probeserver root@$SRV:/root/
+scp ~/code/mase/ops/vps-bootstrap.sh ~/.ssh/id_ed25519.pub root@$SRV:/root/
 ssh root@$SRV 'SSH_PUBKEY_FILE=/root/id_ed25519.pub bash /root/vps-bootstrap.sh'
 ```
 
@@ -53,12 +53,12 @@ dig +short probe.nemilk.ru        # должен показать IP серве�
 ## 5. Пробный сервер и TLS
 
 ```bash
-ssh admin@$SRV 'sudo bash /root/install-probe.sh --domain probe.nemilk.ru --bin /root/probeserver'
+# после шага 3 root по паролю уже не войдёт, файлы копируем администратору
+scp ~/code/mase/ops/probe/install-probe.sh ~/code/mase/ops/probe/probeserver.service /tmp/probeserver admin@$SRV:
+ssh admin@$SRV 'sudo bash ./install-probe.sh --domain probe.nemilk.ru --bin ./probeserver'
 # запасной вариант без домена:  --ip $SRV   (потом netprobe -insecure)
 # эксперимент TLS 1.2:          добавить --tls12
 ```
-
-(Файлы лежат в `/root`, у `admin` к ним доступа нет: либо выполните шаг от root — `ssh root@$SRV 'bash /root/install-probe.sh …'` — либо сначала `sudo mv`. Проще от root, пока root-вход по ключу разрешён.)
 
 Скрипт создаёт пользователя `mase`, кладёт бинарь в `/usr/local/bin`, пишет пароль пробного аккаунта в `/etc/mase-probe/env` (телефон `+70000000099`), включает systemd-юнит `mase-probeserver`, проверяет Caddyfile командой `caddy validate` до установки и ждёт выпуска сертификата. Пароль забрать:
 
@@ -108,7 +108,7 @@ echo "код возврата netprobe: ${PIPESTATUS[0]}"
 ## 7. Эксперимент TLS 1.2 (только если были обрывы)
 
 ```bash
-ssh root@$SRV 'bash /root/install-probe.sh --domain probe.nemilk.ru --bin /root/probeserver --tls12'
+ssh admin@$SRV 'sudo bash ./install-probe.sh --domain probe.nemilk.ru --bin ./probeserver --tls12'
 # повторить замер с меткой …-tls12; вернуть обычный режим — тот же запуск без --tls12
 ```
 
