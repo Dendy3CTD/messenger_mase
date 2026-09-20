@@ -9,7 +9,7 @@ go build -o netprobe .
 # пробный аккаунт: лучше отдельный, сервер держит одно соединение на пользователя
 export MASE_PROBE_PHONE=+7XXXXXXXXXX MASE_PROBE_PASSWORD='...'
 ./netprobe -url wss://mase.nemilk.ru/ws -label "МТС, мобильный, Ростов, Cloudflare" -register   # первый раз
-./netprobe -url wss://<прямой-адрес>/ws -label "МТС, мобильный, Ростов, напрямую"
+./netprobe -url wss://<адрес-пробного-VPS>/ws -label "МТС, мобильный, Ростов, VPS-timeweb"
 ```
 
 Шаги: `dns`, `tcp`, `ws (TLS+handshake)`, `auth.login`/`auth.register`, `ping`, лестница кадров `ws кадр 4/16/64/128/256 КБ` (отличает «режет по размеру кадра» от «режет по общему объёму»; первый провал останавливает прогон), `ws upstream 1 МБ` (четыре кадра по 256 КБ: сервер закрывает соединение на кадрах больше 512 КБ), `https upload/download 5 МБ` (свой файл через `/upload` и `/media/`, сверка sha256), `hold 30m` (ping раз в 30 с). Код возврата 1, если любой шаг провалился.
