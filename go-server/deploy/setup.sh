@@ -8,7 +8,7 @@ echo "=== Mase Server Setup for $DOMAIN ==="
 
 # ── 1. System packages ─────────────────────────────────────────────────────────
 sudo apt-get update -q
-sudo apt-get install -y nginx certbot python3-certbot-nginx gcc
+sudo apt-get install -y nginx certbot python3-certbot-nginx
 
 # ── 2. Go (for building on server) ────────────────────────────────────────────
 if ! command -v go &>/dev/null; then

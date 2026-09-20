@@ -208,7 +208,7 @@ func hasData(ctx context.Context, d *sql.DB) (bool, error) {
 
 func checkCopy(ctx context.Context, path string) error {
 	// read-only and without WAL: checking must not write next to the copy
-	c, err := sql.Open("sqlite3", "file:"+path+"?mode=ro")
+	c, err := sql.Open(driverName, "file:"+path+"?mode=ro")
 	if err != nil {
 		return err
 	}

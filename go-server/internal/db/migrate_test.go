@@ -269,7 +269,7 @@ func TestBackupBeforeMigratingExistingData(t *testing.T) {
 	if st, err := os.Stat(want); err != nil || st.Mode().Perm() != 0o600 {
 		t.Fatalf("права копии: %v %v", st, err)
 	}
-	cp, err := sql.Open("sqlite3", "file:"+want+"?mode=ro")
+	cp, err := sql.Open(driverName, "file:"+want+"?mode=ro")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,7 +37,7 @@ Go-сервер (gorilla/websocket) + SQLite (режим WAL)
 
 ## Требования
 
-- **Go 1.23** и **gcc** (SQLite-драйвер собирается с CGO);
+- **Go 1.23** (SQLite-драйвер `modernc.org/sqlite` без CGO, gcc не нужен);
 - **JDK 17 или новее** (проверено на 21) и **Android SDK, API 34**; путь к SDK — в `android-client/local.properties` (`sdk.dir=…`, файл не в git);
 - `curl` и `ss` (`iproute2`) для `run.sh`;
 - для Cloudflare Tunnel в режиме prod — `cloudflared` (см. ниже).

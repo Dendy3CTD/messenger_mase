@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite" // pure-Go driver, registered as "sqlite"; no CGO or gcc needed
 )
 
 // DB is the global database handle used by all handlers.
@@ -27,16 +27,18 @@ func Open(path string) error {
 	return nil
 }
 
+const driverName = "sqlite"
+
 // dsn builds the connection string. The pragmas are applied to every connection:
 // WAL journal, 5 s busy timeout, foreign keys enforced (the baseline has none yet; later
 // migrations add them) and synchronous=NORMAL, which is safe with WAL.
 func dsn(path string) string {
-	return path + "?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on&_synchronous=NORMAL"
+	return path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=synchronous(NORMAL)"
 }
 
 // OpenRaw opens the database without applying migrations (used by `migrate` commands and tests).
 func OpenRaw(path string) (*sql.DB, error) {
-	d, err := sql.Open("sqlite3", dsn(path))
+	d, err := sql.Open(driverName, dsn(path))
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
