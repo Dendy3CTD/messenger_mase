@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -39,6 +40,9 @@ const (
 	wsChunk     = 256 * 1024
 	replyTimout = 15 * time.Second
 )
+
+// client is replaced in main when -insecure is set.
+var client = http.DefaultClient
 
 type row struct {
 	step, detail string
@@ -138,6 +142,7 @@ func main() {
 	hold := flag.Duration("hold", 30*time.Minute, "сколько держать соединение (0 — пропустить)")
 	every := flag.Duration("ping-every", 30*time.Second, "период ping при удержании")
 	httpMB := flag.Int("http-mb", 5, "размер файла для HTTPS-загрузки и скачивания, МБ (0 — пропустить)")
+	insecure := flag.Bool("insecure", false, "не проверять сертификат сервера (только для пробного сервера по IP с самоподписанным сертификатом)")
 	register := flag.Bool("register", false, "сначала зарегистрировать пробный аккаунт (телефон и пароль из окружения)")
 	flag.Parse()
 
@@ -151,7 +156,12 @@ func main() {
 	base.Scheme = map[string]string{"ws": "http", "wss": "https"}[u.Scheme]
 	base.Path, base.RawQuery = "", ""
 
+	tlsConf := &tls.Config{InsecureSkipVerify: *insecure}
+	client = &http.Client{Transport: &http.Transport{TLSClientConfig: tlsConf, Proxy: http.ProxyFromEnvironment}}
 	fmt.Printf("netprobe %s  метка: %q  сервер: %s\n", time.Now().Format("2006-01-02 15:04:05 MST"), *label, u.Host)
+	if *insecure {
+		fmt.Println("ВНИМАНИЕ: -insecure, сертификат сервера НЕ проверяется")
+	}
 	p := &probe{}
 	host, port := u.Hostname(), u.Port()
 	if port == "" {
@@ -174,7 +184,7 @@ func main() {
 	}
 
 	t = time.Now()
-	d := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
+	d := websocket.Dialer{HandshakeTimeout: 15 * time.Second, TLSClientConfig: tlsConf, Proxy: http.ProxyFromEnvironment}
 	c, _, err := d.Dial(u.String(), nil)
 	if !p.add("ws (TLS+handshake)", t, err, "") {
 		p.finish()
@@ -270,7 +280,7 @@ func (p *probe) httpSteps(base, token string, size int) {
 	t = time.Now()
 	req, _ = http.NewRequestWithContext(ctx, http.MethodGet, base+"/media/"+id, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	var got [32]byte
 	if err == nil {
 		h := sha256.New()
@@ -291,7 +301,7 @@ func (p *probe) httpSteps(base, token string, size int) {
 }
 
 func doJSONField(req *http.Request, field string) (string, error) {
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}

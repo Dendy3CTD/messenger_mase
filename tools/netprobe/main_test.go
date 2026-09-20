@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -84,5 +85,19 @@ func TestLadderStopsAtFirstFailingSize(t *testing.T) {
 	want := "ws кадр 4 КБ=ok,ws кадр 16 КБ=ok,ws кадр 64 КБ=FAIL"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("строки: %v, ожидалось %s", got, want)
+	}
+}
+
+// The default client must refuse a self-signed certificate; the -insecure one must accept it.
+func TestInsecureFlagAcceptsSelfSignedOnly(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) }))
+	defer srv.Close()
+
+	if _, err := http.Get(srv.URL); err == nil {
+		t.Fatal("стандартный клиент принял самоподписанный сертификат")
+	}
+	c := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}}
+	if resp, err := c.Get(srv.URL); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("клиент с insecure не подключился: %v", err)
 	}
 }
