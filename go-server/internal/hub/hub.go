@@ -32,10 +32,20 @@ type Hub struct {
 	byUser map[int64]*Client
 }
 
-var H = &Hub{
-	all:    make(map[*Client]struct{}),
-	byUser: make(map[int64]*Client),
+// H is the process-wide hub used by the handlers.
+var H = New()
+
+// New returns an empty hub.
+func New() *Hub {
+	return &Hub{
+		all:    make(map[*Client]struct{}),
+		byUser: make(map[int64]*Client),
+	}
 }
+
+// Reset replaces the process-wide hub with an empty one. It exists for tests, which share the
+// global hub and must not see connections left over from a previous test.
+func Reset() { H = New() }
 
 // Register adds a new connection.
 func (h *Hub) Register(c *Client) {
