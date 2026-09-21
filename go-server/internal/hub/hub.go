@@ -11,15 +11,44 @@ type Client struct {
 	conn   *websocket.Conn
 	UserID int64
 	Token  string
-	send   chan []byte
+
+	// send is never closed: closing a channel that other goroutines may still be sending to
+	// panics (R-15). done marks a client that has been unregistered; senders check it and drop.
+	send chan []byte
+	done chan struct{}
+	// kick asks the write pump to close the connection (a newer login replaced this one).
+	kick     chan struct{}
+	doneOnce sync.Once
+	kickOnce sync.Once
 }
 
 func newClient(conn *websocket.Conn) *Client {
 	return &Client{
 		conn: conn,
 		send: make(chan []byte, 256),
+		done: make(chan struct{}),
+		kick: make(chan struct{}),
 	}
 }
+
+// enqueue queues a message for the write pump. It never blocks and never panics; it reports
+// false when the client is gone or its buffer is full.
+func (c *Client) enqueue(msg []byte) bool {
+	select {
+	case <-c.done:
+		return false
+	default:
+	}
+	select {
+	case c.send <- msg:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *Client) markDone()     { c.doneOnce.Do(func() { close(c.done) }) }
+func (c *Client) requestClose() { c.kickOnce.Do(func() { close(c.kick) }) }
 
 // Hub keeps track of all connected clients.
 type Hub struct {
@@ -58,29 +87,31 @@ func (h *Hub) Register(c *Client) {
 func (h *Hub) Unregister(c *Client) {
 	h.mu.Lock()
 	delete(h.all, c)
-	if c.UserID != 0 {
-		if existing, ok := h.byUser[c.UserID]; ok && existing == c {
-			delete(h.byUser, c.UserID)
+	// A socket can authenticate more than once; remove every entry that points at it.
+	for uid, existing := range h.byUser {
+		if existing == c {
+			delete(h.byUser, uid)
 		}
 	}
 	h.mu.Unlock()
-	close(c.send)
+	c.markDone()
 }
 
 // Authenticate binds a userID+token to the client and registers the user mapping.
 func (h *Hub) Authenticate(c *Client, userID int64, token string) {
 	h.mu.Lock()
+	defer h.mu.Unlock() // a panic below must not leave the hub locked (R-15)
+	// The same socket signing in as another user no longer belongs to the previous one.
+	if c.UserID != 0 && c.UserID != userID && h.byUser[c.UserID] == c {
+		delete(h.byUser, c.UserID)
+	}
 	// Disconnect any existing connection for this user
 	if old := h.byUser[userID]; old != nil && old != c {
-		select {
-		case old.send <- nil: // signal close
-		default:
-		}
+		old.requestClose()
 	}
 	c.UserID = userID
 	c.Token = token
 	h.byUser[userID] = c
-	h.mu.Unlock()
 }
 
 // Send queues a message to a specific user. Returns false if offline.
@@ -91,20 +122,12 @@ func (h *Hub) Send(userID int64, msg []byte) bool {
 	if !ok {
 		return false
 	}
-	select {
-	case c.send <- msg:
-		return true
-	default:
-		return false
-	}
+	return c.enqueue(msg)
 }
 
 // SendTo sends directly to a client.
 func (h *Hub) SendTo(c *Client, msg []byte) {
-	select {
-	case c.send <- msg:
-	default:
-	}
+	c.enqueue(msg)
 }
 
 // BroadcastAuthenticated sends msg to all authenticated users except excludeUserID (-1 = send to all).
@@ -119,10 +142,7 @@ func (h *Hub) BroadcastAuthenticated(msg []byte, excludeUserID int64) {
 	h.mu.RUnlock()
 
 	for _, c := range targets {
-		select {
-		case c.send <- msg:
-		default:
-		}
+		c.enqueue(msg)
 	}
 }
 

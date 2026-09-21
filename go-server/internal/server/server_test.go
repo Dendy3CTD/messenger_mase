@@ -126,3 +126,22 @@ func waitOffline(t *testing.T, uid int64) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// One connection per user: a newer login closes the older connection and keeps the new one working.
+func TestSecondLoginReplacesTheFirstConnection(t *testing.T) {
+	s := testutil.NewServer(t)
+	first := s.Dial(t)
+	first.Register("+70000000001", "secret1", "Alice", "alice")
+
+	second := s.Dial(t)
+	second.Login("+70000000001", "secret1")
+
+	if !first.WaitClosed(3 * time.Second) {
+		t.Fatal("первое соединение пользователя не закрыто после входа со второго")
+	}
+	second.Send(map[string]any{"type": "ping"})
+	second.Recv("pong")
+	if !hub.H.IsOnline(second.ID) {
+		t.Fatal("пользователь должен остаться в хабе через второе соединение")
+	}
+}

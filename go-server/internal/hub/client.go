@@ -2,6 +2,7 @@ package hub
 
 import (
 	"log"
+	"runtime/debug"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,7 +21,7 @@ func (c *Client) ReadPump(onMessage func([]byte), onClose func()) {
 	defer func() {
 		H.Unregister(c)
 		c.conn.Close()
-		onClose()
+		c.guard("onClose", onClose)
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
@@ -39,8 +40,27 @@ func (c *Client) ReadPump(onMessage func([]byte), onClose func()) {
 			}
 			return
 		}
-		onMessage(msg)
+		c.guard("onMessage", func() { onMessage(msg) })
 	}
+}
+
+func (c *Client) closePolitely() {
+	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+}
+
+// guard runs f and turns a panic into a log entry (and an error frame for message handlers), so a
+// bug in one handler cannot take down the connection loop or leave shared state locked.
+func (c *Client) guard(what string, f func()) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[PANIC] %s uid=%d: %v\n%s", what, c.UserID, r, debug.Stack())
+			if what == "onMessage" {
+				H.SendTo(c, []byte(`{"type":"err","code":"server_error"}`))
+			}
+		}
+	}()
+	f()
 }
 
 // WritePump pumps messages from the send channel to the WebSocket connection.
@@ -54,16 +74,19 @@ func (c *Client) WritePump() {
 
 	for {
 		select {
-		case msg, ok := <-c.send:
+		case msg := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok || msg == nil {
-				// Channel closed or close signal
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
-				return
-			}
 			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 				return
 			}
+
+		case <-c.kick: // replaced by a newer login
+			c.closePolitely()
+			return
+
+		case <-c.done: // unregistered
+			c.closePolitely()
+			return
 
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))

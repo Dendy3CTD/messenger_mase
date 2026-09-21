@@ -169,6 +169,22 @@ func (c *Client) TryRecv(typ string, d time.Duration) (map[string]any, bool) {
 	}
 }
 
+// WaitClosed reports whether the server closed this connection within d.
+func (c *Client) WaitClosed(d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	for {
+		select {
+		case _, ok := <-c.in:
+			if !ok {
+				return true
+			}
+		case <-timer.C:
+			return false
+		}
+	}
+}
+
 // Register creates an account and stores its token and id in the client.
 func (c *Client) Register(phone, password, displayName, username string) {
 	c.t.Helper()
