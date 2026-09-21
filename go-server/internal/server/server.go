@@ -6,6 +6,7 @@ package server
 import (
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/mase/server/internal/handler"
@@ -20,6 +21,13 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
+// active counts running WebSocket handlers. net/http does not wait for hijacked connections
+// on Close, so tests use Wait to be sure no handler still touches the shared globals.
+var active sync.WaitGroup
+
+// Wait blocks until every WebSocket handler started through NewMux has returned.
+func Wait() { active.Wait() }
+
 // NewMux returns the handler for /ws, /upload, /media/ and /health. The database and the media
 // directory must be initialised (db.Open, media.Init) before requests arrive.
 func NewMux() *http.ServeMux {
@@ -27,6 +35,8 @@ func NewMux() *http.ServeMux {
 
 	// WebSocket endpoint
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		active.Add(1)
+		defer active.Done()
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("[WS] upgrade error: %v", err)
