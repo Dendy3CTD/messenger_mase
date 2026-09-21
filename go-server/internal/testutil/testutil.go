@@ -29,36 +29,56 @@ var global sync.Mutex
 // RecvTimeout is how long Client.Recv waits for a frame.
 const RecvTimeout = 3 * time.Second
 
-// Server is a running test server with its own database and media directory.
-type Server struct {
-	HTTP     *httptest.Server
+// Env is a temporary database (all migrations applied) with media storage and a fresh hub.
+type Env struct {
 	DBPath   string
 	MediaDir string
 }
 
-// NewServer opens a fresh database (all migrations applied), initialises media storage, resets
-// the hub and starts the mux. Everything is torn down by t.Cleanup.
-func NewServer(t testing.TB) *Server {
+// Server is a running test server on top of an Env.
+type Server struct {
+	Env
+	HTTP *httptest.Server
+}
+
+// NewDB prepares the process-wide state (db.DB, media directory, hub.H) for a test that needs no
+// HTTP server. It is torn down by t.Cleanup and holds the process-wide lock until then.
+func NewDB(t testing.TB) *Env {
 	t.Helper()
 	global.Lock()
 	dir := t.TempDir()
-	s := &Server{DBPath: filepath.Join(dir, "test.sqlite"), MediaDir: filepath.Join(dir, "media")}
+	e := &Env{DBPath: filepath.Join(dir, "test.sqlite"), MediaDir: filepath.Join(dir, "media")}
 
 	prevOut := log.Writer()
 	log.SetOutput(io.Discard)
-	if err := db.Open(s.DBPath); err != nil {
+	if err := db.Open(e.DBPath); err != nil {
 		log.SetOutput(prevOut)
 		global.Unlock()
 		t.Fatalf("testutil: db.Open: %v", err)
 	}
-	if err := media.Init(s.MediaDir); err != nil {
+	if err := media.Init(e.MediaDir); err != nil {
 		log.SetOutput(prevOut)
 		global.Unlock()
 		t.Fatalf("testutil: media.Init: %v", err)
 	}
 	hub.Reset()
-	s.HTTP = httptest.NewServer(server.NewMux())
 
+	t.Cleanup(func() {
+		db.DB.Close()
+		hub.Reset()
+		log.SetOutput(prevOut)
+		global.Unlock()
+	})
+	return e
+}
+
+// NewServer is NewDB plus the real mux behind an httptest server.
+func NewServer(t testing.TB) *Server {
+	t.Helper()
+	s := &Server{Env: *NewDB(t)}
+	s.HTTP = httptest.NewServer(server.NewMux())
+	// cleanups run last-in first-out: this one runs before NewDB's, so the handlers stop
+	// before the database is closed
 	t.Cleanup(func() {
 		s.HTTP.CloseClientConnections()
 		s.HTTP.Close()
@@ -67,10 +87,6 @@ func NewServer(t testing.TB) *Server {
 		if !server.WaitTimeout(3 * time.Second) {
 			t.Errorf("testutil: обработчики WebSocket не завершились за 3 с (взаимоблокировка хаба?)")
 		}
-		db.DB.Close()
-		hub.Reset()
-		log.SetOutput(prevOut)
-		global.Unlock()
 	})
 	return s
 }
@@ -125,6 +141,14 @@ func (s *Server) Dial(t testing.TB) *Client {
 	return c
 }
 
+// SendRaw writes a text frame as is (for malformed input).
+func (c *Client) SendRaw(text string) {
+	c.t.Helper()
+	if err := c.c.WriteMessage(websocket.TextMessage, []byte(text)); err != nil {
+		c.t.Fatalf("testutil: send raw: %v", err)
+	}
+}
+
 // Close closes the connection from the client side.
 func (c *Client) Close() { c.c.Close() }
 
@@ -136,6 +160,22 @@ func (c *Client) Send(v map[string]any) {
 	}
 	if err := c.c.WriteJSON(v); err != nil {
 		c.t.Fatalf("testutil: send: %v", err)
+	}
+}
+
+// Drain returns every frame that arrives until the connection has been quiet for quiet.
+func (c *Client) Drain(quiet time.Duration) []map[string]any {
+	var out []map[string]any
+	for {
+		select {
+		case m, ok := <-c.in:
+			if !ok {
+				return out
+			}
+			out = append(out, m)
+		case <-time.After(quiet):
+			return out
+		}
 	}
 }
 
