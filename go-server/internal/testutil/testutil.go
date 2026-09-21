@@ -62,7 +62,11 @@ func NewServer(t testing.TB) *Server {
 	t.Cleanup(func() {
 		s.HTTP.CloseClientConnections()
 		s.HTTP.Close()
-		server.Wait() // hijacked WebSocket handlers are not waited for by Close
+		// hijacked WebSocket handlers are not waited for by Close; one that never returns means
+		// the hub is deadlocked, which must fail the test instead of hanging the whole run
+		if !server.WaitTimeout(3 * time.Second) {
+			t.Errorf("testutil: обработчики WebSocket не завершились за 3 с (взаимоблокировка хаба?)")
+		}
 		db.DB.Close()
 		hub.Reset()
 		log.SetOutput(prevOut)
@@ -120,6 +124,9 @@ func (s *Server) Dial(t testing.TB) *Client {
 	t.Cleanup(func() { conn.Close() })
 	return c
 }
+
+// Close closes the connection from the client side.
+func (c *Client) Close() { c.c.Close() }
 
 // Send writes one frame; the session token is added automatically once known.
 func (c *Client) Send(v map[string]any) {

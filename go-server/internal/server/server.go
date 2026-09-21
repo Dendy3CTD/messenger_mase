@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/mase/server/internal/handler"
@@ -27,6 +28,19 @@ var active sync.WaitGroup
 
 // Wait blocks until every WebSocket handler started through NewMux has returned.
 func Wait() { active.Wait() }
+
+// WaitTimeout is Wait with a limit; it reports whether all handlers returned in time. A handler
+// that never returns is how a deadlock in the hub shows up in tests.
+func WaitTimeout(d time.Duration) bool {
+	done := make(chan struct{})
+	go func() { active.Wait(); close(done) }()
+	select {
+	case <-done:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
 
 // NewMux returns the handler for /ws, /upload, /media/ and /health. The database and the media
 // directory must be initialised (db.Open, media.Init) before requests arrive.
